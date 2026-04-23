@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ace 9x Dashboard</title>
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 </head>
 
 <body class="bg-gray-100 font-sans">
@@ -13,42 +16,463 @@
 
 <script>
 // ===== DATA =====
-let user = null
-let members = JSON.parse(localStorage.getItem('members')) || []
-if(Array.isArray(members) && members.some(m => typeof m === 'string')){
-  members = members.map(name => ({name, zalo:'', ingame:'', gameId:'', birthYear:''}))
+// Cấu hình Firebase
+// Bước 1: Tạo project trong Firebase console https://console.firebase.google.com/
+// Bước 2: Bật Authentication > Sign-in method > Email/Password
+// Bước 3: Tạo Firestore database chế độ test hoặc production
+// Bước 4: Lấy config từ Project settings > Your apps > Firebase SDK
+// Bước 5: Dán các giá trị bên dưới vào các trường tương ứng
+// Nếu vẫn chưa thay giá trị, app sẽ dùng localStorage cục bộ.
+const firebaseConfig = {
+  apiKey: "AIzaSyDI6DugjkbQ4uNbqSS9ts13OblsQeM4KFE",
+  authDomain: "ace-b1ad4.firebaseapp.com",
+  projectId: "ace-b1ad4",
+  storageBucket: "ace-b1ad4.firebasestorage.app",
+  messagingSenderId: "192728219602",
+  appId: "1:192728219602:web:3b11fc69677970e329120b"
+};
+
+const useFirebase = !firebaseConfig.apiKey.includes('YOUR_') && !firebaseConfig.projectId.includes('YOUR_')
+let auth = null
+let db = null
+
+if(useFirebase){
+  firebase.initializeApp(firebaseConfig);
+  auth = firebase.auth();
+  db = firebase.firestore();
+} else {
+  console.warn('Firebase chưa cấu hình. Ứng dụng sẽ dùng localStorage tạm thời.')
 }
 
+let user = null
+let members = JSON.parse(localStorage.getItem('members')) || []
 let flowersTotal = 254
 let flowersOwned = JSON.parse(localStorage.getItem('flowersOwned')) || 0
+let topMembers = JSON.parse(localStorage.getItem('topMembers')) || ['KenLy','Min','Trúc']
+let siteContent = JSON.parse(localStorage.getItem('siteContent')) || {
+  headerLabel: 'ACE 9X DASHBOARD',
+  headerTitle: 'Quản lý hội Ace 9x',
+  headerSubtitle: 'Bảng điều khiển quản lý hội',
+  flowerNote: 'Cập nhật hoa để theo dõi tiến độ sưu tập',
+  aboutText: 'Quản lý thành viên, top hội và tiến độ hoa bằng giao diện đơn giản.'
+}
+let logs = JSON.parse(localStorage.getItem('logs')) || []
+let flowerStatus = JSON.parse(localStorage.getItem('flowerStatus')) || {}
+let flowerFiles = [
+  'Bà Bà Na Hồng Nhạt.png',
+  'Bà Bà Na Sao Xanh.png',
+  'Bà Bà Na Trắng Sương.png',
+  'Bách Hợp Hồng.png',
+  'Bách Hợp Trắng.png',
+  'Bách Hợp Vàng.png',
+  'Bóng Quế Cành Ngọc.png',
+  'Bồ Công Anh.png',
+  'Bụp Hồng Cận .png',
+  'Cháo Ngọt Sương Hoa.png',
+  'Chép Vàng Vượt Sống.png',
+  'Chương Hoa Mộng Điệp.png',
+  'Cá Heo Hồng.png',
+  'Cá Heo Trắng.png',
+  'Cá Heo Xanh.png',
+  'Cát Cánh Tím.png',
+  'Cây Holly Vòng Xanh.png',
+  'Cây Lá Gan Tím.png',
+  'Cây Sống Đời Hồng.png',
+  'Cây Sống Đời Vàng.png',
+  'Cây Sống Đời Đỏ.png',
+  'Cúc Chuốn Chocolate.png',
+  'Cúc Châu Phi.png',
+  'Cúc Hoàng Gia Cam.png',
+  'Cúc Hoàng Gia Hồng.png',
+  'Cúc Hoàng Gia Vàng.png',
+  'Cúc Họa Mi.png',
+  'Cúc Indo Cam.png',
+  'Cúc Indo Hồng.png',
+  'Cúc Kim Tiền.png',
+  'Cúc Ping Pong .png',
+  'Cúc Ping Pong Cam.png',
+  'Cúc Ping Pong Trắng.png',
+  'Cúc Thược Dược Cam.png',
+  'Cúc Thược Dược Đen.png',
+  'Cúc Thược Dược Đỏ .png',
+  'Cải Ô Rô Tím.png',
+  'Cẩm Chướng.png',
+  'Cỏ Thủy Tiên Cam.png',
+  'Cỏ Thủy Tiên Hồng Non.png',
+  'Cỏ Thủy Tiên Vàng.png',
+  'Diên Vĩ Đức Hồng Tím.png',
+  'Diên Vĩ Đức Kem Đỏ.png',
+  'Diên Vĩ Đức Trắng Vàng.png',
+  'Dạ Lan Hương Hồng.png',
+  'Dạ Lan Hương Tím.png',
+  'Dạ Lan Hương Vàng.png',
+  'Dạ Yến Thảo Hồng.png',
+  'Dạ Yến Thảo Lam.png',
+  'Dạ Yến Thảo Vàng.png',
+  'Ghim Cài Lủa.png',
+  'Gia Nguyệt-Neo Thuyền Câu Cá.png',
+  'Gim Cài Vàng Mật.png',
+  'Gấu Bông.png',
+  'Gừng Sen Bạch Ngọc.png',
+  'Gừng Sen Hồng Đào.png',
+  'Hoa Anh Thảo Hồng.png',
+  'Hoa Anh Thảo Vàng.png',
+  'Hoa Anh Thảo Xanh.png',
+  'Hoa Baby Hồng.png',
+  'Hoa Baby Lam.png',
+  'Hoa Baby Trắng.png',
+  'Hoa Chuông.png',
+  'Hoa Cát Tường Champagne.png',
+  'Hoa Cát Tường Hồng.png',
+  'Hoa Cát Tường Xanh.png',
+  'Hoa Dành Dành.png',
+  'Hoa Giấy Hồng.png',
+  'Hoa Giấy Tím.png',
+  'Hoa Giấy Vàng.png',
+  'Hoa Huệ Trắng.png',
+  'Hoa Huệ Tím.png',
+  'Hoa Huệ Vàng.png',
+  'Hoa Hành Tím.png',
+  'Hoa Hải Quỳ Hồng.png',
+  'Hoa Hải Quỳ Trắng.png',
+  'Hoa Hải Quỳ Tím.png',
+  'Hoa Hợp Hoan.png',
+  'Hoa Liên Kiều Vàng.png',
+  'Hoa Loa Kèn Cam.png',
+  'Hoa Loa Kèn Hồng.png',
+  'Hoa Loa Kèn Đỏ.png',
+  'Hoa Ly.png',
+  'Hoa Lưu Ly.png',
+  'Hoa Lồng Đèn Cam.png',
+  'Hoa Lồng Đèn Tím.png',
+  'Hoa Lồng Đèn Đỏ.png',
+  'Hoa Lộ Vi Hồng.png',
+  'Hoa Lộ Vi Trắng.png',
+  'Hoa Lộ Vi Vàng.png',
+  'Hoa Nhài.png',
+  'Hoa Phi Yến Hồng.png',
+  'Hoa Phi Yến Lam.png',
+  'Hoa Phi Yến Tím.png',
+  'Hoa Poppy Cam.png',
+  'Hoa Poppy Himalaya Tím.png',
+  'Hoa Poppy Himalaya Vàng.png',
+  'Hoa Poppy Himalaya Xanh.png',
+  'Hoa Poppy Tím.png',
+  'Hoa Poppy Đỏ.png',
+  'Hoa Rosa Rubus Hồng.png',
+  'Hoa Rosa Rubus Trắng.png',
+  'Hoa Rosa Rubus Đỏ.png',
+  'Hoa Sao Nhái Hồng.png',
+  'Hoa Sao Nhái Trắng.png',
+  'Hoa Sao Nhái Tím.png',
+  'Hoa Sứ Sáng Ngọc.png',
+  'Hoa Thanh Anh Tím.png',
+  'Hoa Thanh Tú.png',
+  'Hoa Thiên Nga.png',
+  'Hoa Thiên Điểu.png',
+  'Hoa Thủy Châu Trắng.png',
+  'Hoa Thủy Châu Tím.png',
+  'Hoa Ông Lão Hồng.png',
+  'Hoa Ông Lão Tím.png',
+  'Hoa Ông Lão.png',
+  'Hoa Đào Hồng Nhạt.png',
+  'Hoa Đào.png',
+  'Hương Lam Đêm.png',
+  'Hướng Dương.png',
+  'Hải Quỳ Cam.png',
+  'Hải Quỳ Trắng.png',
+  'Hải Quỳ Đỏ.png',
+  'Hải Đường Hồng.png',
+  'Hải Đường Vàng.png',
+  'Hải Đường Đỏ.png',
+  'Hồng Cecil Lam.png',
+  'Hồng Cecil Phấn.png',
+  'Hồng Champagne.png',
+  'Hồng Jacqueline Trắng.png',
+  'Hồng Lenten Hồng.png',
+  'Hồng Lenten Vàng.png',
+  'Hồng Lenten Đỏ.png',
+  'Hồng Môn Đỏ.png',
+  'Hồng Nhung.png',
+  'Hồng Phấn.png',
+  'Hồng Vàng.png',
+  'Lan Nam Phi.png',
+  'Lan Phượng Vĩ Đỏ.png',
+  'Lan Vũ Nữ Cam.png',
+  'Lan Vũ Nữ Vàng.png',
+  'Lan Vũ Nữ Đỏ.png',
+  'Lay Ơn Trắng.png',
+  'Lay Ơn Tím.png',
+  'Lay Ơn Vàng.png',
+  'Linh Lan.png',
+  'Lung Linh Bóng Trăng.png',
+  'Lạc Tân Phụ .png',
+  'Lạc Tân Phụ Tím.png',
+  'Lạc Tân Phụ Đỏ.png',
+  'Lạp Mai Hương Phi.png',
+  'Lạp Mai Linh Lung.png',
+  'Lạp Mai Đỏ.png',
+  'Lệ Đường Thanh Nhã.png',
+  'Mai Nguyệt-Huyền Âm.png',
+  'Mao Lương Cam Hoàng Hôn.png',
+  'Mao Lương Hoa Đào Mật.png',
+  'Mao Lương Kem Vàng.png',
+  'Mưa Bụi Cô Tô.png',
+  'Mạch Môn Hồng Phấn.png',
+  'Mạch Môn Phấn.png',
+  'Mạch Môn Sương Trắng.png',
+  'Mạch Môn Trắng.png',
+  'Mạch Môn Tím.png',
+  'Mạn Châu Sa.png',
+  'Mạn Đà La.png',
+  'Mẫu Đơn Ánh Ngọc.png',
+  'Mẫu Đơn Ánh Tím.png',
+  'Mẫu Đơn Ánh Xanh.png',
+  'Mộc Hương Cam.png',
+  'Mộc Hương Trắng.png',
+  'Mộc Hương Vàng.png',
+  'Mộc Lan Ngọc Ngà.png',
+  'Mộc Lan Tím.png',
+  'Mộc Lan Vàng.png',
+  'Mỹ Nhụy Răng Cưa.png',
+  'Nguyệt Quế Trắng.png',
+  'Ngân Hà Chiếu Nhụy.png',
+  'Ngót Nghẻo Cam Thẳm.png',
+  'Ngót Nghẻo Hồng Phấn.png',
+  'Ngót Nghẻo Đỏ Lửa.png',
+  'Ngôi Sao Bethlehem.png',
+  'Nhài Mùa Đông.png',
+  'Nhài Nhật.png',
+  'Nhụy Linh Ánh Sao.png',
+  'Oải Hương An Giấc.png',
+  'Phong Lộc Hoa.png',
+  'Phù Dung Cam Hộp Báu.png',
+  'Phù Dung Hồng Hộp Báu.png',
+  'Phù Dung TÍm Hộp Báu.png',
+  'Rosa Banksiae Hồng.png',
+  'Rosa Banksiae Trắng.png',
+  'Rosa Banksiae Vàng.png',
+  'San Hô Cam.png',
+  'San Hô Tím.png',
+  'San Hô Xanh.png',
+  'Sơn Trà.png',
+  'Sắc Cam Mùa Xuân.png',
+  'Thanh Cúc Hồng.png',
+  'Thanh Cúc Lam.png',
+  'Thanh Cúc Tím.png',
+  'Thanh Loan Bích Vũ.png',
+  'Thiên Cung.png',
+  'Thuyền Tiên Sông Ngân.png',
+  'Thược Dược Trắng.png',
+  'Thược Dược Đỏ.png',
+  'Thục Quỳ Hồng.png',
+  'Thục Quỳ Vàng.png',
+  'Thục Quỳ Đỏ.png',
+  'Thủy Tiên.png',
+  'Tiên Nữ Rải Hoa.png',
+  'Trà Mai Hồng.png',
+  'Trúc Ánh Sắc Vàng.png',
+  'Trúc Đào Xanh.png',
+  'Trúc Đào Đỏ Tím.png',
+  'Tulip Hồng.png',
+  'Tulip Vàng.png',
+  'Tuyết Mai Hồng.png',
+  'Tuyết Mai Trắng.png',
+  'Tùng Linh Chiếu Rọi.png',
+  'Tú Cầu Hồng.png',
+  'Tú Cầu Xanh.png',
+  'Tú cấu Tím.png',
+  'Tường Vi Hồng.png',
+  'Tường Vi Vàng.png',
+  'Tường Vi Xanh.png',
+  'Tỏi Trời.png',
+  'Tử La Lan.png',
+  'Tử Linh Lan Tím.png',
+  'Tử Linh Lan Đỏ.png',
+  'Tử Linh Lan Đồng.png',
+  'Tử Đinh Hương Tím.png',
+  'Tử Đinh Hương Vàng.png',
+  'Tử Đằng Hồng.png',
+  'Tử Đằng Lam.png',
+  'Vân Môn Hồng.png',
+  'Vân Môn Tím.png',
+  'Vân Môn Vàng.png',
+  'Vạn Tuế Lá .png',
+  'Vạn Tuế Lá Lam.png',
+  'Đình Hoa Đêm Mộng.png',
+  'Đăng Tiêu Trắng Tím.png',
+  'Đăng Tiêu Đỏ Chu.png',
+  'Đậu Thơm Tím Oải.png',
+  'Đậu Thơm Xanh Mơ.png',
+  'Đế Vương Hồng Tía.png',
+  'Đế Vương Lam Lưu Ly.png',
+  'Đế Vương Xích Diễm.png',
+  'Địa Lan Hồng.png',
+  'Địa Lan Trắng.png',
+  'Địa Lan Xanh.png',
+  'Đổ Quyên Đỏ.png',
+  'Đỗ Quyên Hồng.png',
+  'Đỗ Quyên Vàng.png'
+]
 
 // ===== LOGIN =====
 function renderLogin(){
   app.innerHTML = `
   <div class="flex items-center justify-center h-screen">
-    <div class="bg-white p-8 rounded-2xl shadow w-80">
+    <div class="bg-white p-8 rounded-2xl shadow w-96">
       <h2 class="text-xl font-bold mb-4">Đăng nhập hệ thống</h2>
-      <input id="u" placeholder="Username" class="w-full border p-2 mb-2 rounded"/>
+      <input id="u" type="email" placeholder="Email" class="w-full border p-2 mb-2 rounded"/>
       <input id="p" type="password" placeholder="Password" class="w-full border p-2 mb-4 rounded"/>
-      <button onclick="login()" class="w-full bg-black text-white py-2 rounded">Đăng nhập</button>
+      <button onclick="login()" class="w-full bg-black text-white py-2 rounded mb-2">Đăng nhập</button>
+      <button onclick="createAccount()" class="w-full bg-gray-800 text-white py-2 rounded">Tạo tài khoản</button>
+      <p class="text-xs text-gray-500 mt-4">${useFirebase ? 'Dùng cùng tài khoản trên mọi trình duyệt để xem dữ liệu đã lưu.' : 'Firebase chưa cấu hình. Dữ liệu hiện lưu cục bộ trong trình duyệt này.'}</p>
     </div>
   </div>`
 }
 
-function login(){
-  if(u.value === 'admin' && p.value === '123'){
-    user = {role:'admin'}
-    renderApp()
-  } else alert("Sai tài khoản")
+async function login(){
+  try {
+    if(useFirebase){
+      const cred = await auth.signInWithEmailAndPassword(u.value.trim(), p.value.trim())
+      user = cred.user
+      await loadData()
+      renderApp()
+    } else {
+      const email = u.value.trim()
+      const pass = p.value.trim()
+      const localUsers = JSON.parse(localStorage.getItem('localUsers')) || {}
+      if(localUsers[email] === pass){
+        user = {uid: email, email}
+        loadLocalData()
+        renderApp()
+      } else {
+        alert('Sai email hoặc mật khẩu local.')
+      }
+    }
+  } catch(error){
+    alert(error.message)
+  }
+}
+
+async function createAccount(){
+  try {
+    if(useFirebase){
+      const cred = await auth.createUserWithEmailAndPassword(u.value.trim(), p.value.trim())
+      user = cred.user
+      await saveData()
+      renderApp()
+    } else {
+      const email = u.value.trim()
+      const pass = p.value.trim()
+      const localUsers = JSON.parse(localStorage.getItem('localUsers')) || {}
+      localUsers[email] = pass
+      localStorage.setItem('localUsers', JSON.stringify(localUsers))
+      user = {uid: email, email}
+      saveLocalData()
+      renderApp()
+    }
+  } catch(error){
+    alert(error.message)
+  }
+}
+
+if(useFirebase){
+  auth.onAuthStateChanged(async (currentUser) => {
+    user = currentUser
+    if(user){
+      await loadData()
+      renderApp()
+    } else {
+      renderLogin()
+    }
+  })
+} else {
+  renderLogin()
+}
+
+async function loadData(){
+  if(!useFirebase || !user){
+    loadLocalData()
+    return
+  }
+  try {
+    const doc = await db.collection('users').doc(user.uid).get()
+    if(doc.exists){
+      const data = doc.data()
+      members = Array.isArray(data.members) ? data.members : []
+      if(Array.isArray(members) && members.some(m => typeof m === 'string')){
+        members = members.map(name => ({name, zalo:'', ingame:'', gameId:'', birthYear:''}))
+      }
+      topMembers = Array.isArray(data.topMembers) ? data.topMembers : topMembers
+      flowerStatus = data.flowerStatus || flowerStatus
+      flowersOwned = getFlowersOwnedCount()
+      siteContent = data.siteContent || siteContent
+      logs = Array.isArray(data.logs) ? data.logs : []
+    } else {
+      await saveData()
+    }
+  } catch(error){
+    console.error('Firebase load error', error)
+    alert('Không thể tải dữ liệu từ server. Kiểm tra cấu hình Firebase.')
+    loadLocalData()
+  }
+  localStorage.setItem('siteContent', JSON.stringify(siteContent))
+  localStorage.setItem('members', JSON.stringify(members))
+  localStorage.setItem('topMembers', JSON.stringify(topMembers))
+  localStorage.setItem('flowersOwned', JSON.stringify(flowersOwned))
+  localStorage.setItem('flowerStatus', JSON.stringify(flowerStatus))
+  localStorage.setItem('logs', JSON.stringify(logs))
+}
+
+function loadLocalData(){
+  members = JSON.parse(localStorage.getItem('members')) || members
+  if(Array.isArray(members) && members.some(m => typeof m === 'string')){
+    members = members.map(name => ({name, zalo:'', ingame:'', gameId:'', birthYear:''}))
+  }
+  topMembers = JSON.parse(localStorage.getItem('topMembers')) || topMembers
+  flowerStatus = JSON.parse(localStorage.getItem('flowerStatus')) || flowerStatus
+  flowersOwned = getFlowersOwnedCount()
+  siteContent = JSON.parse(localStorage.getItem('siteContent')) || siteContent
+  logs = JSON.parse(localStorage.getItem('logs')) || logs
+}
+
+async function saveData(){
+  if(useFirebase && user){
+    try {
+      await db.collection('users').doc(user.uid).set({
+        members,
+        topMembers,
+        flowersOwned,
+        flowerStatus,
+        siteContent,
+        logs
+      }, {merge:true})
+    } catch(error){
+      console.error('Firebase save error', error)
+      alert('Lưu dữ liệu lên server thất bại.')
+    }
+  } else {
+    saveLocalData()
+  }
+}
+
+function saveLocalData(){
+  localStorage.setItem('members', JSON.stringify(members))
+  localStorage.setItem('topMembers', JSON.stringify(topMembers))
+  localStorage.setItem('flowersOwned', JSON.stringify(flowersOwned))
+  localStorage.setItem('flowerStatus', JSON.stringify(flowerStatus))
+  localStorage.setItem('siteContent', JSON.stringify(siteContent))
+  localStorage.setItem('logs', JSON.stringify(logs))
 }
 
 // ===== APP =====
 let tab = 'dashboard'
-let topMembers = JSON.parse(localStorage.getItem('topMembers')) || ['KenLy','Min','Trúc']
 let showMemberModal = false
 let showTopModal = false
 let showFlowerModal = false
+let showContentModal = false
 let editingMemberIndex = -1
+let flowerFilter = 'all'
 
 function renderApp(){
   app.innerHTML = `
@@ -56,8 +480,9 @@ function renderApp(){
 
     <!-- HEADER -->
     <div class="bg-white rounded-2xl p-6 shadow mb-6">
-      <p class="text-gray-400 text-sm">ACE 9X DASHBOARD</p>
-      <h1 class="text-3xl font-bold">Quản lý hội Ace 9x</h1>
+      <p class="text-gray-400 text-sm">${siteContent.headerLabel}</p>
+      <h1 class="text-3xl font-bold">${siteContent.headerTitle}</h1>
+      <p class="text-gray-500 mt-1">${siteContent.headerSubtitle}</p>
       <button onclick="logout()" class="text-red-500 text-sm mt-2">Đăng xuất</button>
 
       <div class="flex gap-2 mt-4 flex-wrap">
@@ -65,7 +490,10 @@ function renderApp(){
           <span class="bg-yellow-100 px-3 py-1 rounded-full text-sm">Top ${i+1}: ${name}</span>
         `).join('')}
       </div>
-      <button onclick="openTopModal()" class="mt-4 bg-yellow-500 text-black px-4 py-2 rounded hover:bg-yellow-600">Cập nhật top</button>
+      <div class="flex flex-wrap gap-2 mt-4">
+        <button onclick="openTopModal()" class="bg-yellow-500 text-black px-4 py-2 rounded hover:bg-yellow-600">Cập nhật top</button>
+        <button onclick="openContentModal()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Cập nhật nội dung</button>
+      </div>
     </div>
 
     <!-- STATS -->
@@ -160,6 +588,23 @@ function renderApp(){
     </div>
     ` : ''}
 
+    ${showContentModal ? `
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+      <div class="bg-white p-6 rounded-xl shadow-lg w-96">
+        <h3 class="font-bold mb-4 text-lg">Cập nhật nội dung trang</h3>
+        <div id="contentModalMessage" class="mb-4"></div>
+        <input id="contentHeaderLabel" placeholder="Nhãn header" class="w-full border p-2 mb-3 rounded" value="${siteContent.headerLabel}" />
+        <input id="contentHeaderTitle" placeholder="Tiêu đề" class="w-full border p-2 mb-3 rounded" value="${siteContent.headerTitle}" />
+        <input id="contentHeaderSubtitle" placeholder="Mô tả" class="w-full border p-2 mb-3 rounded" value="${siteContent.headerSubtitle}" />
+        <textarea id="contentFlowerNote" placeholder="Ghi chú hoa" class="w-full border p-2 mb-4 rounded" rows="3">${siteContent.flowerNote}</textarea>
+        <div class="flex gap-2">
+          <button onclick="saveSiteContent()" class="flex-1 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Lưu</button>
+          <button onclick="closeContentModal()" class="flex-1 bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">Hủy</button>
+        </div>
+      </div>
+    </div>
+    ` : ''}
+
   </div>
   `
   renderContent()
@@ -177,15 +622,99 @@ function setTab(t){
   renderApp()
 }
 
+// ===== FLOWER HELPERS =====
+function getFlowersOwnedCount(){
+  return Object.values(flowerStatus).filter(Boolean).length
+}
+
+function setFlowerFilter(filter){
+  flowerFilter = filter
+  renderApp()
+}
+
+function renderFlowerCards(){
+  let query = document.getElementById('flowerSearch')?.value.toLowerCase() || ''
+  let grid = document.getElementById('flowerGrid')
+  if(!grid) return
+
+  let filtered = flowerFiles.filter(filename => {
+    const name = filename.replace(/\.png$/i, '').toLowerCase()
+    const owned = !!flowerStatus[filename]
+    
+    // Lọc theo search query
+    if(!name.includes(query) && !filename.toLowerCase().includes(query)) return false
+    
+    // Lọc theo filter tab
+    if(flowerFilter === 'owned' && !owned) return false
+    if(flowerFilter === 'unowned' && owned) return false
+    
+    return true
+  })
+
+  if(filtered.length === 0){
+    grid.innerHTML = '<div class="col-span-full text-center text-gray-500 py-8">Không tìm thấy hoa phù hợp.</div>'
+    return
+  }
+
+  grid.innerHTML = filtered.map((filename, idx) => {
+    let name = filename.replace(/\.png$/i, '')
+    let owned = !!flowerStatus[filename]
+    return `
+      <div class="relative rounded-3xl overflow-hidden border ${owned ? 'border-green-300 shadow-lg bg-white' : 'border-gray-200 bg-gray-50 opacity-70 hover:opacity-100'} transition" data-flower="${filename}">
+        <img src="${encodeURI('Thư Viện Hoa/' + filename)}" alt="${name}" class="w-full h-44 object-cover" />
+        <div class="p-3 space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <div class="font-semibold text-sm leading-tight truncate">${name}</div>
+            <label class="inline-flex items-center gap-2 text-sm cursor-pointer select-none">
+              <input type="checkbox" class="flower-toggle h-4 w-4 text-green-600 rounded focus:ring-green-500" ${owned ? 'checked' : ''} />
+              <span class="text-xs status-text ${owned ? 'text-green-700' : 'text-gray-600'}">${owned ? 'Đã có' : 'Chưa có'}</span>
+            </label>
+          </div>
+          <button type="button" class="flower-button w-full text-xs text-left text-gray-500 hover:text-black">Chạm để chuyển trạng thái</button>
+        </div>
+      </div>
+    `
+  }).join('')
+  
+  // Event delegation - thêm handler vào grid một lần
+  if(!grid.__flowerClickHandler) {
+    grid.__flowerClickHandler = (e) => {
+      let toggle = e.target.closest('.flower-toggle, .flower-button')
+      if(!toggle) return
+      let card = toggle.closest('[data-flower]')
+      let filename = card?.getAttribute('data-flower')
+      if(filename) toggleFlower(filename)
+    }
+    grid.addEventListener('click', grid.__flowerClickHandler)
+  }
+}
+
+
+function toggleFlower(filename){
+  flowerStatus[filename] = !flowerStatus[filename]
+  flowersOwned = getFlowersOwnedCount()
+  logs.push(`${flowerStatus[filename] ? 'Đánh dấu đã có:' : 'Bỏ tick:'} ${filename.replace(/\.png$/i, '')}`)
+  localStorage.setItem('flowerStatus', JSON.stringify(flowerStatus))
+  localStorage.setItem('flowersOwned', JSON.stringify(flowersOwned))
+  localStorage.setItem('logs', JSON.stringify(logs))
+  if(useFirebase && user) saveData()
+  // Cập nhật lại giao diện với tab count mới
+  renderApp()
+}
+
 // ===== DASHBOARD =====
 function dashboard(){
-  let percent = Math.round((flowersOwned/flowersTotal)*100)
+  let ownedCount = getFlowersOwnedCount()
+  let percent = Math.round((ownedCount/flowersTotal)*100)
 
   return `
   <div class="bg-white p-6 rounded-xl shadow">
     <div class="flex justify-between items-center mb-4">
-      <h3 class="font-bold">Tiến độ sưu tập</h3>
-      <button onclick="openFlowerModal()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Cập nhật hoa</button>
+      <div>
+        <h3 class="font-bold">Tiến độ sưu tập</h3>
+        <p class="text-sm text-gray-500 mt-1">Đã có ${ownedCount} / ${flowersTotal} hoa</p>
+      </div>
+      <button onclick="setTab('flowers')" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Tra cứu hoa</button>
     </div>
 
     <div class="w-full bg-gray-200 rounded-full h-4">
@@ -193,8 +722,9 @@ function dashboard(){
     </div>
 
     <p class="text-sm mt-2 text-gray-500">
-      ${flowersOwned}/${flowersTotal} (${percent}%)
+      ${ownedCount}/${flowersTotal} (${percent}%)
     </p>
+    <p class="text-sm mt-3 text-gray-500">${siteContent.flowerNote}</p>
   </div>
   `
 }
@@ -239,10 +769,27 @@ function memberUI(){
 
 // ===== FLOWERS =====
 function flowersUI(){
+  let ownedCount = getFlowersOwnedCount()
+  let unownedCount = flowersTotal - ownedCount
   return `
   <div class="bg-white p-6 rounded-xl shadow">
-    <h3 class="font-bold mb-4">Danh sách hoa (demo)</h3>
-    <p>Chức năng nâng cao có thể thêm sau</p>
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+      <div>
+        <h3 class="font-bold text-lg">Tra cứu hoa</h3>
+        <p id="flowerProgressText" class="text-sm text-gray-500 mt-1">Đã có ${ownedCount} / ${flowersTotal} hoa</p>
+      </div>
+      <button onclick="setTab('dashboard')" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Cập nhật tiến độ</button>
+    </div>
+
+    <!-- Filter tabs -->
+    <div class="flex gap-2 mb-4 flex-wrap">
+      <button onclick="setFlowerFilter('all')" class="px-4 py-2 rounded-full ${flowerFilter === 'all' ? 'bg-black text-white' : 'bg-gray-200'} text-sm">Tất cả (${flowersTotal})</button>
+      <button onclick="setFlowerFilter('owned')" class="px-4 py-2 rounded-full ${flowerFilter === 'owned' ? 'bg-green-500 text-white' : 'bg-gray-200'} text-sm">Đã có (${ownedCount})</button>
+      <button onclick="setFlowerFilter('unowned')" class="px-4 py-2 rounded-full ${flowerFilter === 'unowned' ? 'bg-red-500 text-white' : 'bg-gray-200'} text-sm">Chưa có (${unownedCount})</button>
+    </div>
+
+    <input id="flowerSearch" oninput="renderFlowerCards()" placeholder="Tìm kiếm hoa theo tên..." class="border p-3 w-full mb-4 rounded" />
+    <div id="flowerGrid" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"></div>
   </div>
   `
 }
@@ -275,7 +822,6 @@ function doSearch(){
 }
 
 // ===== HISTORY =====
-let logs = JSON.parse(localStorage.getItem('logs')) || []
 
 function historyUI(){
   return `
@@ -418,6 +964,50 @@ function saveTopMembers(){
   }, 900)
 }
 
+function openContentModal(){
+  showContentModal = true
+  showMemberModal = false
+  showTopModal = false
+  showFlowerModal = false
+  renderApp()
+  setTimeout(()=>{
+    document.getElementById('contentHeaderLabel')?.focus()
+  }, 100)
+}
+
+function closeContentModal(){
+  showContentModal = false
+  renderApp()
+}
+
+function saveSiteContent(){
+  let headerLabel = document.getElementById('contentHeaderLabel').value.trim()
+  let headerTitle = document.getElementById('contentHeaderTitle').value.trim()
+  let headerSubtitle = document.getElementById('contentHeaderSubtitle').value.trim()
+  let flowerNote = document.getElementById('contentFlowerNote').value.trim()
+  let msg = document.getElementById('contentModalMessage')
+
+  if(!headerLabel || !headerTitle) {
+    if(msg) msg.innerHTML = '<div class="p-3 rounded bg-red-100 text-red-700 text-sm">Vui lòng nhập tiêu đề và nhãn header</div>'
+    return
+  }
+
+  siteContent = {
+    headerLabel,
+    headerTitle,
+    headerSubtitle,
+    flowerNote,
+    aboutText: siteContent.aboutText
+  }
+
+  logs.push(`Cập nhật nội dung trang: ${headerTitle}`)
+  save()
+  if(msg) msg.innerHTML = '<div class="p-3 rounded bg-green-100 text-green-700 text-sm">Lưu nội dung thành công!</div>'
+  setTimeout(()=>{
+    closeContentModal()
+  }, 900)
+}
+
 function openFlowerModal(){
   showFlowerModal = true
   showMemberModal = false
@@ -453,11 +1043,14 @@ function saveFlowersOwned(){
 }
 
 
-function save(){
+async function save(){
   localStorage.setItem('members', JSON.stringify(members))
   localStorage.setItem('logs', JSON.stringify(logs))
   localStorage.setItem('topMembers', JSON.stringify(topMembers))
   localStorage.setItem('flowersOwned', JSON.stringify(flowersOwned))
+  localStorage.setItem('flowerStatus', JSON.stringify(flowerStatus))
+  localStorage.setItem('siteContent', JSON.stringify(siteContent))
+  await saveData()
   renderApp()
 }
 
@@ -468,9 +1061,17 @@ function renderContent(){
   if(tab==='flowers') content.innerHTML = flowersUI()
   if(tab==='search') content.innerHTML = searchUI()
   if(tab==='history') content.innerHTML = historyUI()
+  if(tab==='flowers') setTimeout(renderFlowerCards, 0)
 }
 
-function logout(){
+async function logout(){
+  try {
+    if(useFirebase && auth){
+      await auth.signOut()
+    }
+  } catch(error){
+    console.error('Logout error', error)
+  }
   user = null
   renderLogin()
 }
